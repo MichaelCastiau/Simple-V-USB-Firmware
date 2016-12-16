@@ -17,6 +17,25 @@
 #include <util/delay.h>
 
 static unsigned char buffer[64];
+void initializeTimer(){
+	/*TCCR1B |= (1 << CS10) | ( 1 << WGM12);	//Enable timer, no prescaler, enable CTC mode with compare register OCR1A
+	TCNT1 = 0;
+	OCR1A = 60000;	//Reset the timer value after comparing against 157
+	TIMSK |= (1 << OCIE1A);*/
+	
+	TCCR1A = (1<<WGM10)|(1<<COM1A1)|(1<<COM1B1);  //Fast PWM, 8 bit mode
+	TCCR1B = (1<<WGM12)|(1<<CS10);               //no prescaler, clear timer after compare
+	//50% duty cycle
+	//total cycle = 2 * 157
+	OCR1A = 157;
+	OCR1B = 157;
+}
+ISR (TIMER1_COMPA_vect)
+{
+	//Timer was compared
+	//Switch led
+	PORTC ^= (1 << PC0);
+}
 uint8_t isLedOn(){
 	//Evaluate the state of the Port
 	uint8_t isOn = (1 & PORTB);
@@ -30,10 +49,10 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8]) {
 		case USB_COMMAND_SWITCH_LED:
 		if(rq->wValue.bytes[0] == 1){
 			//1 for turning led on
-			PORTB |= 1; // turn LED on
+			PORTB |=(1 << PINB0); // turn LED on
 			}else if (rq->wValue.bytes[0] == 0){
 			//O for turning led off
-			PORTB &= ~1; // turn LED off
+			PORTB &= ~(1 << PINB0); // turn LED off
 		}
 		return 0;
 		case USB_GET_STRING:
@@ -44,16 +63,22 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8]) {
 
 	return 0; // should not get here
 }
+void initializePorts(){
+	MCUCR |= (1u << PUD);	//Disable all pull ups
+	DDRD &= ~(1<<PD3);	//D3 as input
+	DDRD &= ~(1<<PD2);	//D2 as input
+	DDRB |= (1<<PB0) | ( 1 << PB1);
+	DDRC |= ( 1 << PC0);
+
+	//standard lamp on
+	PORTB |= (1 << PINB0);
+	//Wavelength lamp off
+	PORTB &= ~(1 << PINB1);
+}
 
 int main() {
 
-	MCUCR |= (1u << PUD);	//Disable all pull ups
-	DDRD &= ~(1<<PD3);
-	DDRD &= ~(1<<PD2);
-	DDRB |= (1<<PB0);
-
-	//standard lamp on
-	PORTB |= 1;
+	initializePorts();
 
 	usbInit();
 	
@@ -62,7 +87,7 @@ int main() {
 	usbDeviceConnect();
 	
 	sei(); // Enable interrupts after re-enumeration
-	
+	initializeTimer();
 	while(true) {
 		usbPoll();
 	}
